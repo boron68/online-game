@@ -2,15 +2,67 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0">
     <title>Air Hockey - Онлайн</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #333; }
-        #game-area { width: 600px; height: 400px; background-color: #008080; border: 10px solid #ccc; position: relative; overflow: hidden; }
-        .player-mallet { width: 50px; height: 50px; background-color: white; border-radius: 50%; position: absolute; cursor: pointer; border: 3px solid black; }
+        body { 
+            margin: 0; 
+            /* Блокування скролінгу та дій браузера */
+            overflow: hidden; 
+            touch-action: none; 
+            
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh; 
+            background-color: #333; 
+        }
+        #game-area { 
+            width: 600px; 
+            height: 400px; 
+            background-color: #008080; 
+            border: 10px solid #ccc; 
+            position: relative; 
+            overflow: hidden; 
+            /* Адаптація розміру для мобільних */
+            max-width: 95vw; 
+            max-height: 95vh;
+        }
+        /* Стилі для ключок */
+        .player-mallet { 
+            width: 50px; 
+            height: 50px; 
+            background-color: white; 
+            border-radius: 50%; 
+            position: absolute; 
+            cursor: pointer; 
+            border: 3px solid black; 
+            transition: background-color 0.3s; /* Плавна зміна кольору */
+            z-index: 10;
+        }
         #player1 { top: 175px; left: 50px; background-color: blue; }
         #player2 { top: 175px; right: 50px; background-color: red; }
-        #status-message { position: absolute; top: 10px; left: 10px; color: white; font-family: Arial, sans-serif; }
+        #status-message { 
+            position: absolute; 
+            top: 10px; 
+            width: 100%;
+            text-align: center;
+            color: white; 
+            font-family: Arial, sans-serif; 
+            z-index: 20;
+        }
+        
+        /* Лінія по центру */
+        #game-area::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 2px;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.5);
+            transform: translateX(-50%);
+        }
     </style>
 </head>
 <body>
@@ -32,98 +84,152 @@
         const player1Mallet = document.getElementById('player1');
         const player2Mallet = document.getElementById('player2');
 
-        let myPlayerNumber = 0; // 1, 2, або 0 (спостерігач)
+        let myPlayerNumber = 0; 
         let myMallet = null;
 
-        // --- 1. Обробка З'єднання та Призначення Гравця ---
+        // ---------------------------------------------------
+        // УНІВЕРСАЛЬНА ЛОГІКА РУХУ (МИША + ДОТИК)
+        // ---------------------------------------------------
+        
+        // Повертає координати з події (миша або дотик)
+        function getCoords(e) {
+            if (e.touches && e.touches.length > 0) {
+                // Сенсорний екран
+                return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+            } else {
+                // Миша
+                return e;
+            }
+        }
+
+        // Функція, що активує перетягування
+        function enableDragging() {
+            if (myPlayerNumber === 0 || !myMallet) return;
+
+            let shiftX, shiftY;
+
+            function moveAt(pageX, pageY) {
+                let newX = pageX - shiftX - gameArea.getBoundingClientRect().left;
+                let newY = pageY - shiftY - gameArea.getBoundingClientRect().top;
+
+                // 1. Обмеження: не дозволяємо вийти за межі поля
+                newX = Math.max(0, Math.min(gameArea.clientWidth - myMallet.offsetWidth, newX));
+                newY = Math.max(0, Math.min(gameArea.clientHeight - myMallet.offsetHeight, newY));
+
+                // 2. Обмеження: Гравець 1/2 грає лише у своїй половині
+                if (myPlayerNumber === 1) {
+                    // Ліва половина
+                    newX = Math.min((gameArea.clientWidth / 2) - myMallet.offsetWidth, newX);
+                } 
+                else if (myPlayerNumber === 2) {
+                    // Права половина
+                    newX = Math.max(gameArea.clientWidth / 2, newX);
+                }
+
+                myMallet.style.left = newX + 'px';
+                myMallet.style.top = newY + 'px';
+                
+                // Відправка нових координат на сервер
+                socket.emit('player_move', { x: newX, y: newY });
+            }
+
+            // Обробка початку перетягування
+            function startDrag(e) {
+                if (myPlayerNumber === 0) return;
+                
+                const coords = getCoords(e);
+                
+                shiftX = coords.clientX - myMallet.getBoundingClientRect().left;
+                shiftY = coords.clientY - myMallet.getBoundingClientRect().top;
+                
+                // Прив'язка обробників руху та кінця
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('touchmove', onTouchMove, { passive: false }); 
+                document.addEventListener('mouseup', endDrag);
+                document.addEventListener('touchend', endDrag);
+
+                // Запобігаємо скролінгу під час початку дотику
+                if (e.type === 'touchstart') {
+                     e.preventDefault(); 
+                }
+            }
+
+            function onMouseMove(e) {
+                moveAt(e.clientX, e.clientY);
+            }
+            
+            function onTouchMove(e) {
+                // e.preventDefault() викликано у startDrag для touchstart
+                const coords = getCoords(e);
+                moveAt(coords.clientX, coords.clientY);
+            }
+
+            function endDrag() {
+                // Знімаємо обробники
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('touchmove', onTouchMove);
+                document.removeEventListener('mouseup', endDrag);
+                document.removeEventListener('touchend', endDrag);
+            }
+            
+            // Прив'язка початкових подій до ключки
+            myMallet.addEventListener('mousedown', startDrag);
+            myMallet.addEventListener('touchstart', startDrag);
+            
+            myMallet.ondragstart = () => false; // Запобігаємо стандартному перетягуванню
+        }
+
+        // ---------------------------------------------------
+        // SOCKET.IO (ЗВ'ЯЗОК ІЗ СЕРВЕРОМ)
+        // ---------------------------------------------------
+
+        // 1. Успішне підключення до сервера
         socket.on('connect', () => {
-            statusMessage.textContent = '✅ Підключено до сервера. Очікування гравця...';
+            statusMessage.textContent = '✅ Підключено до сервера. Очікування призначення ролі...';
         });
 
+        // 2. Призначення ролі (1, 2 або 0)
         socket.on('player_assignment', (playerNumber) => {
             myPlayerNumber = playerNumber;
             if (myPlayerNumber === 1) {
                 myMallet = player1Mallet;
-                player1Mallet.style.backgroundColor = 'lime';
-                statusMessage.textContent = 'Ви Гравець 1 (синій). Чекаємо суперника.';
+                player1Mallet.style.backgroundColor = 'lime'; // Підсвічуємо свою ключку
+                statusMessage.textContent = 'Ви Гравець 1 (Синя зона). Чекаємо суперника.';
             } else if (myPlayerNumber === 2) {
                 myMallet = player2Mallet;
-                player2Mallet.style.backgroundColor = 'lime';
-                statusMessage.textContent = 'Ви Гравець 2 (червоний). Чекаємо суперника.';
+                player2Mallet.style.backgroundColor = 'lime'; // Підсвічуємо свою ключку
+                statusMessage.textContent = 'Ви Гравець 2 (Червона зона). Чекаємо суперника.';
             } else {
                 statusMessage.textContent = '❌ Усі місця зайняті. Ви Спостерігач.';
             }
+            
+            // Активуємо перетягування лише після призначення
+            if (myMallet) {
+                enableDragging();
+            }
         });
 
+        // 3. Початок гри
         socket.on('game_start', (msg) => {
             statusMessage.textContent = `🚀 ${msg}`;
+            if (myMallet) {
+                myMallet.style.backgroundColor = 'white'; // Повертаємо ключку до білого (ігрові кольори)
+            }
         });
 
-        socket.on('opponent_disconnected', (msg) => {
-             statusMessage.textContent = `🚫 ${msg}`;
-        });
-
-        // --- 2. Логіка Руху (для гравця 1) ---
-        if (myMallet) {
-            myMallet.onmousedown = (e) => {
-                if (myPlayerNumber === 0) return; // Спостерігачі не рухаються
-
-                let shiftX = e.clientX - myMallet.getBoundingClientRect().left;
-                let shiftY = e.clientY - myMallet.getBoundingClientRect().top;
-
-                function moveAt(pageX, pageY) {
-                    let newX = pageX - shiftX - gameArea.getBoundingClientRect().left;
-                    let newY = pageY - shiftY - gameArea.getBoundingClientRect().top;
-
-                    // Обмеження: не дозволяємо вийти за межі поля
-                    newX = Math.max(0, Math.min(gameArea.clientWidth - myMallet.offsetWidth, newX));
-                    newY = Math.max(0, Math.min(gameArea.clientHeight - myMallet.offsetHeight, newY));
-
-                    // Обмеження: Гравець 1 грає лише у лівій половині
-                    if (myPlayerNumber === 1) {
-                        newX = Math.min((gameArea.clientWidth / 2) - myMallet.offsetWidth, newX);
-                    } 
-                    // Обмеження: Гравець 2 грає лише у правій половині
-                    else if (myPlayerNumber === 2) {
-                        newX = Math.max(gameArea.clientWidth / 2, newX);
-                    }
-
-                    myMallet.style.left = newX + 'px';
-                    myMallet.style.top = newY + 'px';
-                    
-                    // Відправка нових координат на сервер
-                    socket.emit('player_move', { x: newX, y: newY });
-                }
-
-                function onMouseMove(event) {
-                    moveAt(event.clientX, event.clientY);
-                }
-
-                document.addEventListener('mousemove', onMouseMove);
-
-                myMallet.onmouseup = () => {
-                    document.removeEventListener('mousemove', onMouseMove);
-                    myMallet.onmouseup = null;
-                };
-            };
-            myMallet.ondragstart = () => false; // Запобігаємо стандартному перетягуванню
-        }
-
-
-        // --- 3. Обробка Руху Суперника ---
+        // 4. Оновлення позиції суперника
         socket.on('opponent_move', (data) => {
-            // Рух Гравець 1 (я бачу рух гравця 2)
+            // Якщо я Гравець 1, я рухаю player2Mallet
             if (myPlayerNumber === 1 && data.player === 2) {
                 player2Mallet.style.left = data.x + 'px';
                 player2Mallet.style.top = data.y + 'px';
             }
-            // Рух Гравець 2 (я бачу рух гравця 1)
+            // Якщо я Гравець 2, я рухаю player1Mallet
             else if (myPlayerNumber === 2 && data.player === 1) {
                 player1Mallet.style.left = data.x + 'px';
                 player1Mallet.style.top = data.y + 'px';
             }
         });
         
-    </script>
-</body>
-</html>
+        // 5. Відключення суперника
+        socket.on('opponent_
