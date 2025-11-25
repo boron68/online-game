@@ -8,7 +8,7 @@
         body { 
             margin: 0; 
             overflow: hidden; 
-            touch-action: none; /* Блокує скролінг на сенсорних екранах */
+            touch-action: none; 
             display: flex; 
             justify-content: center; 
             align-items: center; 
@@ -26,7 +26,6 @@
             max-height: 95vh;
             box-sizing: content-box;
         }
-        /* Елементи гри */
         .game-object { 
             position: absolute; 
             border-radius: 50%; 
@@ -36,7 +35,7 @@
         .player-mallet { 
             width: 50px; 
             height: 50px; 
-            cursor: grab; /* Курсор для керування */
+            cursor: grab; 
             z-index: 10;
         }
         #player1 { background-color: blue; }
@@ -133,7 +132,7 @@
         const GAME_WIDTH = 600;
 
         // ---------------------------------------------------
-        // УНІВЕРСАЛЬНА ЛОГІКА РУХУ (МИША + ДОТИК) - ВИПРАВЛЕННЯ БАГУ УПРАВЛІННЯ
+        // УНІВЕРСАЛЬНА ЛОГІКА РУХУ (МИША + ДОТИК) 
         // ---------------------------------------------------
         
         function getCoords(e) {
@@ -144,7 +143,6 @@
             }
         }
 
-        // Функція, що активує перетягування для конкретного елемента
         function enableDragging(malletElement) {
             if (!malletElement) return;
 
@@ -203,13 +201,11 @@
                 document.removeEventListener('touchend', endDrag);
             }
             
-            // Прив'язка початкових подій до обох елементів
             malletElement.addEventListener('mousedown', startDrag);
             malletElement.addEventListener('touchstart', startDrag);
             malletElement.ondragstart = () => false; 
         }
 
-        // Ініціалізуємо перетягування для обох ключок один раз при завантаженні
         enableDragging(player1Mallet);
         enableDragging(player2Mallet);
 
@@ -246,35 +242,42 @@
             }
         });
 
-        // Оновлення стану всієї гри від сервера
+        // Оновлення стану всієї гри від сервера (ВИПРАВЛЕНО!)
         socket.on('game_update', (gameState) => {
-            // Оновлюємо шайбу
+            // 1. Оновлюємо шайбу завжди
             puckElement.style.left = (gameState.puck.x - gameState.puck.radius) + 'px';
             puckElement.style.top = (gameState.puck.y - gameState.puck.radius) + 'px';
             
-            // Оновлюємо позицію гравця-суперника або обох, якщо ми спостерігачі
+            const p1_left = (gameState.player1.x - gameState.player1.radius) + 'px';
+            const p1_top = (gameState.player1.y - gameState.player1.radius) + 'px';
+            const p2_left = (gameState.player2.x - gameState.player2.radius) + 'px';
+            const p2_top = (gameState.player2.y - gameState.player2.radius) + 'px';
+            
+            
             if (myPlayerNumber === 1) {
-                player2Mallet.style.left = (gameState.player2.x - gameState.player2.radius) + 'px';
-                player2Mallet.style.top = (gameState.player2.y - gameState.player2.radius) + 'px';
-            } else if (myPlayerNumber === 2) {
-                player1Mallet.style.left = (gameState.player1.x - gameState.player1.radius) + 'px';
-                player1Mallet.style.top = (gameState.player1.y - gameState.player1.radius) + 'px';
-            } else {
-                // Спостерігач
-                player1Mallet.style.left = (gameState.player1.x - gameState.player1.radius) + 'px';
-                player1Mallet.style.top = (gameState.player1.y - gameState.player1.radius) + 'px';
-                player2Mallet.style.left = (gameState.player2.x - gameState.player2.radius) + 'px';
-                player2Mallet.style.top = (gameState.player2.y - gameState.player2.radius) + 'px';
+                // Я Гравець 1: оновлюю лише ключку суперника (Player 2)
+                player2Mallet.style.left = p2_left;
+                player2Mallet.style.top = p2_top;
+            } 
+            else if (myPlayerNumber === 2) {
+                // Я Гравець 2: оновлюю лише ключку суперника (Player 1)
+                player1Mallet.style.left = p1_left;
+                player1Mallet.style.top = p1_top;
+            } 
+            else {
+                // Я Спостерігач: рухаю обидві
+                player1Mallet.style.left = p1_left;
+                player1Mallet.style.top = p1_top;
+                player2Mallet.style.left = p2_left;
+                player2Mallet.style.top = p2_top;
             }
         });
         
-        // Оновлення рахунку після голу
         socket.on('goal', (score) => {
             scoreBoard.textContent = `${score.player1} : ${score.player2}`;
             statusMessage.textContent = `ГОЛ! Новий рахунок: ${score.player1} : ${score.player2}. Шайба повернулася у центр.`;
         });
         
-        // Відключення суперника
         socket.on('opponent_disconnected', (msg) => {
              scoreBoard.textContent = `0 : 0`;
              statusMessage.textContent = `🚫 ${msg}`;
