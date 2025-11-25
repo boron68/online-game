@@ -155,17 +155,22 @@
                 let newX = pageX - shiftX - gameArea.getBoundingClientRect().left;
                 let newY = pageY - shiftY - gameArea.getBoundingClientRect().top;
 
-                // Обмеження поля
+                // Обмеження поля (Вертикальні межі)
                 newX = Math.max(0, Math.min(gameArea.clientWidth - malletElement.offsetWidth, newX));
                 newY = Math.max(0, Math.min(gameArea.clientHeight - malletElement.offsetHeight, newY));
 
-                // Обмеження половини поля
+                // --- ОНОВЛЕНІ ОБМЕЖЕННЯ ПОЛОВИНИ ПОЛЯ ---
+                const HALF_FIELD = GAME_WIDTH / 2;
+
                 if (myPlayerNumber === 1) {
-                    newX = Math.min((GAME_WIDTH / 2) - MALLET_SIZE, newX);
+                    // Гравець 1 (ліва половина): обмеження праворуч
+                    newX = Math.min(HALF_FIELD - MALLET_SIZE, newX);
                 } 
                 else if (myPlayerNumber === 2) {
-                    newX = Math.max(GAME_WIDTH / 2, newX);
+                    // Гравець 2 (права половина): обмеження ліворуч
+                    newX = Math.max(HALF_FIELD, newX);
                 }
+                // ----------------------------------------
 
                 malletElement.style.left = newX + 'px';
                 malletElement.style.top = newY + 'px';
@@ -242,7 +247,7 @@
             }
         });
 
-        // Оновлення стану всієї гри від сервера (ВИПРАВЛЕНО!)
+        // Оновлення стану всієї гри від сервера
         socket.on('game_update', (gameState) => {
             // 1. Оновлюємо шайбу завжди
             puckElement.style.left = (gameState.puck.x - gameState.puck.radius) + 'px';
